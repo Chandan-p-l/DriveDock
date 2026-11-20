@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dd-token" content="%%TOKEN%%">
+<title>DriveDock</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="setup" class="setup" hidden></div>
+
+<div id="app" class="layout" hidden>
+  <aside class="sidebar">
+    <div class="brand"><img src="/icon.svg" alt=""><span>DriveDock</span></div>
+    <nav id="nav">
+      <a href="#dashboard" data-view="dashboard"><i data-icon="home"></i><span>Dashboard</span></a>
+      <a href="#folders" data-view="folders"><i data-icon="folder"></i><span>Backup folders</span></a>
+      <a href="#drive" data-view="drive"><i data-icon="cloud"></i><span>My Drive</span></a>
+      <a href="#activity" data-view="activity"><i data-icon="history"></i><span>Activity</span></a>
+      <a href="#settings" data-view="settings"><i data-icon="settings"></i><span>Settings</span></a>
+    </nav>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+  <main id="main">
+    <section class="view" id="view-dashboard"></section>
+    <section class="view" id="view-folders"></section>
+    <section class="view" id="view-drive"></section>
+    <section class="view" id="view-activity"></section>
+    <section class="view" id="view-settings"></section>
+  </main>
+</div>
+
+<div id="modal" class="modal-back" hidden><div class="modal" id="modalBox"></div></div>
+<div id="toasts"></div>
+<script src="/app.js"></script>
+</body>
+</html>
