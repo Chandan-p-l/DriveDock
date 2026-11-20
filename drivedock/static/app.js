@@ -187,6 +187,8 @@ const bootAt = Date.now();
 function render() {
   if (!S) return;
   const setupMode = !S.connected;
+  if (S.connected && render.wasConnected === false) { ABOUT = null; loadAbout(); D.loaded = false; }  // just signed in
+  render.wasConnected = S.connected;
   $('#setup').hidden = !setupMode;
   $('#app').hidden = setupMode;
   if (setupMode) return renderSetup();
@@ -249,7 +251,12 @@ function renderSide() {
 /* ---------- dashboard ---------- */
 async function loadAbout() {
   aboutAt = Date.now();
-  try { ABOUT = await api('about'); if (view === 'dashboard') renderDashboard(); } catch (e) { ABOUT = { error: e.message }; }
+  try { ABOUT = await api('about'); }
+  catch (e) {
+    ABOUT = { error: e.message };
+    setTimeout(() => { if (view === 'dashboard' && ABOUT?.error) loadAbout(); }, 5000);  // engine may be restarting
+  }
+  if (view === 'dashboard' && S?.connected) renderDashboard();
 }
 
 function heroHTML() {
@@ -308,7 +315,8 @@ function renderDashboard() {
   const n = S.net || {}, p = S.power || {}, c = S.config;
   let storage;
   if (!ABOUT) storage = `<div class="muted"><span class="spinner"></span></div>`;
-  else if (ABOUT.error) storage = `<div class="muted small">${esc(ABOUT.error)}</div>`;
+  else if (ABOUT.error) storage = `<div class="muted small"><span class="spinner" style="width:12px;height:12px;border-width:2px"></span> Reconnecting to Google Drive…</div>
+    <div class="muted small" style="margin-top:6px">${esc(ABOUT.error)}</div><a href="#" class="small" data-act="retry-about">Retry now</a>`;
   else {
     const pct = ABOUT.total ? (ABOUT.used / ABOUT.total) * 100 : 0;
     storage = `<div class="stat-big">${bytes(ABOUT.used)}</div><div class="muted small">of ${bytes(ABOUT.total)} used · ${bytes(ABOUT.free)} free</div>
@@ -791,6 +799,7 @@ const ACTIONS = {
     if (await confirmBox('Empty Google Drive trash?', `<p>Permanently deletes everything in your Drive trash${ABOUT?.trashed ? ` (${bytes(ABOUT.trashed)})` : ''}. This can’t be undone.</p>`, 'Empty trash', true))
       act(async () => { await api('emptytrash', {}); aboutAt = 0; loadAbout(); }, 'Trash emptied');
   },
+  'retry-about': () => { ABOUT = null; renderDashboard(); loadAbout(); },
   'cd': d => driveLoad(d.path),
   'refresh-drive': () => D.mode === 'large' ? driveLarge() : driveLoad(D.path),
   'large': () => D.mode === 'large' ? driveLoad(D.path) : driveLarge(),

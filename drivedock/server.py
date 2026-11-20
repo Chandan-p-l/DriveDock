@@ -126,8 +126,34 @@ class Rclone:
         self.port = None
         self.auth = None
         self.version = ""
+        self._start_lock = threading.Lock()
 
     def start(self):
+        """Start (or restart) the engine on a dedicated thread that lives as long as rclone does.
+
+        PR_SET_PDEATHSIG fires when the *thread* that spawned the child exits, not the process.
+        Spawning from a short-lived thread (e.g. the sign-in watcher) would get rclone killed
+        the moment that thread finished, so the spawning thread must outlive the engine.
+        """
+        with self._start_lock:
+            result, ready = {}, threading.Event()
+
+            def engine_thread():
+                try:
+                    self._start()
+                except Exception as e:
+                    result["error"] = e
+                ready.set()
+                proc = self.proc
+                if proc is not None and "error" not in result:
+                    proc.wait()
+
+            threading.Thread(target=engine_thread, name="rclone-engine", daemon=True).start()
+            ready.wait()
+            if "error" in result:
+                raise result["error"]
+
+    def _start(self):
         if not self.bin:
             raise RuntimeError("rclone is not installed (sudo apt install rclone)")
         self.stop()
@@ -345,14 +371,23 @@ class App:
         if client_id.strip():
             cmd += ["client_id", client_id.strip(), "client_secret", client_secret.strip()]
         self.connecting = {"status": "waiting", "url": None, "error": None}
-        env = dict(os.environ, RCLONE_CONFIG=RCLONE_CONF)
         os.makedirs(CONF_DIR, exist_ok=True)
-        self.connect_proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                             stdin=subprocess.DEVNULL, text=True, preexec_fn=_die_with_parent)
-        threading.Thread(target=self._watch_connect, daemon=True).start()
+        started = threading.Event()
+        threading.Thread(target=self._watch_connect, args=(cmd, started), daemon=True).start()
+        started.wait(10)
         return {"ok": True}
 
-    def _watch_connect(self):
+    def _watch_connect(self, cmd, started):
+        # Spawned here (not in the HTTP thread) so the sign-in process lives as long as this watcher.
+        env = dict(os.environ, RCLONE_CONFIG=RCLONE_CONF)
+        try:
+            self.connect_proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                                 stdin=subprocess.DEVNULL, text=True, preexec_fn=_die_with_parent)
+        except Exception as e:
+            self.connecting = {"status": "error", "error": str(e)}
+            started.set()
+            return
+        started.set()
         proc, out = self.connect_proc, []
         for line in proc.stdout:
             out.append(line)
@@ -940,6 +975,12 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, code, body, ctype="application/json"):
+        try:
+            self._send_raw(code, body, ctype)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the window was closed or reloaded mid-request; nothing to do
+
+    def _send_raw(self, code, body, ctype):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
