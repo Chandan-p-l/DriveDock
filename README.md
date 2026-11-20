@@ -4,13 +4,26 @@
 
 Google doesn't make a Drive desktop app for Linux. DriveDock fills that gap. You choose which folders on your laptop to protect, and DriveDock backs them up to your Google Drive automatically whenever you connect to Wi-Fi. From the same window you can browse, download, upload and clean up your Drive.
 
-It runs entirely on your own computer. [rclone](https://rclone.org), the well-known open-source tool, does the transfers. DriveDock adds the scheduling, Wi-Fi and battery rules, backup history and the user interface around it.
+It runs entirely on your own computer.
+
+> **Powered by [rclone](https://rclone.org).** DriveDock is built on top of rclone, the open-source "rsync for cloud storage". rclone does all of the communication with Google Drive: sign-in, uploads, downloads, listing, deleting and storage info. DriveDock is the app around it: the scheduling, the Wi-Fi and battery rules, backup history, safety checks and the user interface. DriveDock is not affiliated with rclone or Google. See [Built on rclone](#built-on-rclone).
+
+## 🎬 Watch the 45-second intro
+
+<p align="center">
+  <a href="https://github.com/Chandan-p-l/DriveDock/raw/main/promo/DriveDock-promo.mp4">
+    <img src="promo/preview.gif" alt="DriveDock intro video: how it works, the app, and what's under the hood" width="720">
+  </a>
+  <br>
+  <b><a href="https://github.com/Chandan-p-l/DriveDock/raw/main/promo/DriveDock-promo.mp4">▶ Watch the full video with sound (MP4, 1080p, 45 s)</a></b>
+</p>
 
 ---
 
 ## Contents
 
 - [Features](#features)
+- [Built on rclone](#built-on-rclone)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [First-time setup](#first-time-setup)
@@ -29,6 +42,7 @@ It runs entirely on your own computer. [rclone](https://rclone.org), the well-kn
 - [Uninstall](#uninstall)
 - [How it works (for developers)](#how-it-works-for-developers)
 - [Security and privacy](#security-and-privacy)
+- [Promo video](#promo-video)
 
 ---
 
@@ -75,22 +89,76 @@ It runs entirely on your own computer. [rclone](https://rclone.org), the well-kn
 
 ---
 
+## Built on rclone
+
+DriveDock doesn't talk to Google Drive itself. It uses **[rclone](https://rclone.org)** ([GitHub](https://github.com/rclone/rclone)) as its transfer engine.
+
+**What rclone is:** a free, open-source command-line program for managing files on cloud storage. It's MIT-licensed, has been developed since 2014 by Nick Craig-Wood and a large community, and supports 70+ storage providers, including Google Drive, Dropbox, OneDrive and S3. It's widely used and trusted, and is included in Ubuntu, Debian, Fedora and Arch.
+
+### Who does what
+
+| Task | Handled by |
+|---|---|
+| Google sign-in (OAuth) and storing the access token | **rclone** (`rclone config create`) |
+| Uploading, downloading and comparing files | **rclone** (`sync/copy`, `sync/sync`, `operations/copyfile`, `operations/movefile`) |
+| Detecting new and changed files, so only changes are uploaded | **rclone** |
+| Keeping old versions in Mirror mode | **rclone** (`--backup-dir`) |
+| Skip patterns | **rclone** filter rules |
+| Listing, renaming, trashing and creating folders on Drive | **rclone** (`operations/list`, `operations/purge`, `operations/deletefile`, `operations/mkdir`) |
+| Storage usage and emptying the trash | **rclone** (`operations/about`, `operations/cleanup`) |
+| Speed limit and parallel uploads | **rclone** (`core/bwlimit`, `--transfers`) |
+| Live progress (speed, time remaining, current files) | **rclone** (`core/stats`), shown by DriveDock |
+| The app window, dashboard and Drive browser | **DriveDock** |
+| Choosing folders, Backup and Mirror modes | **DriveDock** |
+| Backing up automatically on Wi-Fi connect and on a schedule | **DriveDock** |
+| Rules for metered networks, trusted Wi-Fi and battery | **DriveDock** (using NetworkManager and `/sys/class/power_supply`) |
+| Safety checks (for example, the empty-folder check) | **DriveDock** |
+| Backup history, notifications and the background service | **DriveDock** |
+
+### How DriveDock runs rclone
+
+- **Engine:** when DriveDock starts, it launches `rclone rcd`, rclone's built-in [remote control server](https://rclone.org/rc/). This runs only on `127.0.0.1`, on a random port, with a random password. DriveDock sends it commands over that local connection.
+- **Lifetime:** the rclone process is stopped automatically when DriveDock stops.
+- **Config:** DriveDock uses its **own** rclone config file, `~/.config/drivedock/rclone.conf`. Any rclone remotes you already set up in `~/.config/rclone/rclone.conf` aren't read or changed.
+- **Logs:** rclone's log is written to `~/.local/share/drivedock/rclone.log`.
+
+### Your backups stay in a normal format
+
+Files on Drive are stored as normal files and folders: no special format and no lock-in. You can always reach them with rclone directly, even without DriveDock, for example:
+
+```bash
+# list your backups using DriveDock's rclone config
+rclone --config ~/.config/drivedock/rclone.conf lsd "gdrive:DriveDock Backups"
+
+# copy a backup back to this computer
+rclone --config ~/.config/drivedock/rclone.conf copy "gdrive:DriveDock Backups/<computer>/Documents" ~/Restored-Documents -P
+```
+
+They're also visible as normal files at drive.google.com.
+
+### rclone version
+
+DriveDock works with rclone **1.60 or newer**. It has been tested with 1.60.1, which is Ubuntu's packaged version. A newer rclone is recommended for better Google Drive performance and fixes:
+
+```bash
+rclone version                                         # check what you have
+sudo -v ; curl https://rclone.org/install.sh | sudo bash   # install the latest official version
+```
+
+---
+
 ## Requirements
 
 | Requirement | Notes |
 |---|---|
 | Linux with **systemd** and a desktop | Tested on Ubuntu 26.04 (GNOME) |
 | **Python 3.8+** | Standard library only, nothing to `pip install` |
-| **rclone** | `sudo apt install rclone`. A recent version is recommended (see below) |
+| **[rclone](https://rclone.org) 1.60+** | The transfer engine DriveDock is built on: `sudo apt install rclone`. A recent version is recommended (see below) |
 | **NetworkManager** (`nmcli`) | For Wi-Fi and metered detection. Already on Ubuntu, Fedora and Mint |
 | A browser | Chrome, Chromium, Brave or Edge opens DriveDock as its own app window. Any other browser opens it as a normal tab |
 | `notify-send` (optional) | For desktop notifications. Included with most desktops |
 
-**Recommended: update rclone.** Ubuntu's packaged version can be old. The official installer gets the latest:
-
-```bash
-sudo -v ; curl https://rclone.org/install.sh | sudo bash
-```
+**Recommended: update rclone.** Ubuntu's packaged version can be old. See [rclone version](#rclone-version).
 
 ---
 
@@ -480,3 +548,36 @@ XDG_CONFIG_HOME=/tmp/dd/cfg XDG_DATA_HOME=/tmp/dd/data DRIVEDOCK_PORT=8799 \
 - **Your Google token:** stays on your computer in `~/.config/drivedock/rclone.conf` (file mode `600`). It's never sent anywhere except to Google.
 - **No middleman:** files go directly from your computer to Google Drive. There are no third-party servers and no telemetry.
 - **Not in the repo:** `.gitignore` excludes `*.conf` files, so a token can't be committed by accident.
+
+---
+
+## Promo video
+
+The intro video at the top of this page is also generated from code, in [`promo/`](promo/):
+
+| File | What it is |
+|---|---|
+| [`video.html`](promo/video.html) | Every scene and animation, written as HTML, CSS and JavaScript on one timeline. Edit text or timing here |
+| [`soundtrack.mjs`](promo/soundtrack.mjs) | An original soundtrack and sound effects, synthesized in code (about 116 BPM, timed so the beats land on the scene changes) |
+| [`render.mjs`](promo/render.mjs) | Drives headless Chrome to render the scenes frame by frame and pipes the frames into ffmpeg |
+| `DriveDock-promo.mp4` | The finished video: 1920×1080, 30 fps, 45 s, -14 LUFS |
+| `preview.gif` | The short looping preview shown in this README |
+
+To rebuild it (needs Node 22+, Google Chrome and ffmpeg):
+
+```bash
+cd promo
+node soundtrack.mjs soundtrack.wav
+node render.mjs video-silent.mp4 30        # about 10 minutes
+ffmpeg -i video-silent.mp4 -i soundtrack.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 256k \
+  -af "loudnorm=I=-14:TP=-1.0:LRA=9" -ar 48000 -shortest -movflags +faststart DriveDock-promo.mp4
+```
+
+The music and sound effects are original, synthesized in code, with no samples or licensed audio. The app shown in the video uses example data.
+
+---
+
+## Acknowledgements
+
+- **[rclone](https://rclone.org)** by Nick Craig-Wood and contributors (MIT License). It powers every transfer in DriveDock, and DriveDock wouldn't exist without it. If DriveDock is useful to you, please consider [supporting rclone](https://rclone.org/sponsor/).
+- Google Drive is a trademark of Google LLC. DriveDock is an independent project and isn't affiliated with or endorsed by Google or the rclone project.

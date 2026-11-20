@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .env
 *.conf
+promo/video-silent.mp4
+promo/*.wav
